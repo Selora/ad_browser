@@ -201,18 +201,10 @@ def print_dict(d):
 
 
 def dict_list_to_csv(d, csv_name):
-    with open(path.join(args.out_dir, csv_name), 'w') as f:
-        out_csv = csv.DictWriter(f, d[0].keys())
+    with open(path.join(args.out_dir, csv_name), 'w', encoding='utf-8') as f:
+        out_csv = csv.DictWriter(f, d[0].keys(), delimiter=',', quotechar='"', quoting=csv.QUOTE_ALL)
         out_csv.writeheader()
         out_csv.writerows(d)
-
-def dict_to_csv(d, headers, csv_name):
-    with open(path.join(args.out_dir, csv_name), 'w') as f:
-        out_csv = csv.writer(f)
-        out_csv.writerow(headers)
-        for k,v in d.items():
-            out_csv.writerow([k, v])
-
 
 if __name__ == "__main__":
 
@@ -286,4 +278,4 @@ if __name__ == "__main__":
     print_dict(groups)
     print()
 
-    dict_to_csv(groups, ['group', 'users'], 'groups.csv')
+    dict_list_to_csv([groups], 'groups.csv')
