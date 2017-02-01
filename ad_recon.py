@@ -8,6 +8,32 @@ import sys
 import csv
 from os import makedirs
 import os.path as path
+import math
+
+from enum import IntFlag
+class UAC(IntFlag):
+    # https://msdn.microsoft.com/en-us/library/ms680832(v=vs.85).aspx
+    logonscript_executed = 0x1
+    account_disabled = 0x2
+    homedir_req = 0x8
+    locked = 0x10
+    passwd_not_reqd = 0x20
+    passwd_cant_change = 0x40
+    encrypted_txt_pw_allowd = 0x80
+    duplicate_account = 0x100
+    normal_account = 0x200
+    interdomain_trust = 0x800
+    workstation_dom = 0x1000
+    dc_backup = 0x2000
+    pw_dont_expire = 0x10000
+    mns_logon = 0x20000
+    smartcard_req = 0x40000
+    trusted_for_delegation = 0x80000
+    not_delegated = 0x100000
+    des_only = 0x200000
+    preauth_not_required = 0x400000
+    pw_expired = 0x800000
+    trusted_to_auth_for_delegation = 0x1000000
 
 
 def stringify(x):
@@ -24,6 +50,10 @@ class ADRecon:
     def __init__(self, ad_client):
         self.ad = ad_client
 
+    @staticmethod
+    def _get_kerberos_supported_types(bitflag):
+        pass
+
     def get_computers(self):
         search_filter = '(objectCategory=Computer)'
         response = self.ad.query(search_filter)
@@ -31,6 +61,7 @@ class ADRecon:
         for entry in response:
             if entry.get('dn'):
                 attributes = entry.get('attributes')
+                #[print(k,v) for k,v in attributes.items()]
                 yield OrderedDict([
                     ('DN', entry.get('dn')),
                     ('name', attributes.get('name')),
@@ -38,7 +69,8 @@ class ADRecon:
                     ('OS_name', attributes.get('operatingSystem')),
                     ('OS_servicepack', attributes.get('operatingSystemServicePack') or ''),
                     ('fqdn', attributes.get('dNSHostName')),
-                    ('spn', ', '.join(attributes.get('servicePrincipalName')))
+                    ('spn', ', '.join(attributes.get('servicePrincipalName'))),
+                    ('Kerberos', recon._get_kerberos_supported_types(attributes.get('msDS-SupportedEncryptionTypes')))
                 ])
 
     def get_users(self):
@@ -49,19 +81,33 @@ class ADRecon:
             if entry.get('dn'):
                 attributes = entry.get('attributes')
                 #[print(k,v) for k,v in attributes.items()]
+                #exit(-1)
                 yield OrderedDict([
                     ('DN', entry.get('dn')),
 
+                    ('Account Details', ' '),
                     ('name', attributes.get('name')),
+                    ('whenCreated', attributes.get('whenCreated')),
                     ('SAMaccountName', attributes.get('sAMAccountName')),
                     ('cn', attributes.get('cn')),
                     ('upn', attributes.get('userPrincipalName')),
-
                     ('SID', attributes.get('objectSid')),
+
+                    ('Pwd & failed auth', ' '),
                     ('pwdLastSet', attributes.get('pwdLastSet')),
+                    ('badPwdCount', attributes.get('badPwdCount')),
+                    ('badPwdTime', attributes.get('badPasswordTime')),
 
+                    ('Login', ' '),
+                    ('lastLogoff', attributes.get('lastLogoff')),
+                    ('lastLogon', attributes.get('lastLogon')),
+                    ('logonCount', attributes.get('logonCount')),
+
+                    ('UAC', ' '),
+                    ('UAC', str(UAC(attributes.get('userAccountControl'))).replace('UAC.', '')),
+
+                    ('Groups & SPN', ' '),
                     ('member_of', ', '.join(strip_member_of(attributes.get('memberOf')) or [])),
-
                     ('spn', ', '.join(attributes.get('servicePrincipalName') or []))
                 ])
 
@@ -69,21 +115,25 @@ class ADRecon:
         search_filter = '(objectClass=domain)'
         response = self.ad.query(search_filter)
 
+        # Most policies are stored as number of intervals of 100 ns representing expiration period
+        get_time_in_sec = lambda x: abs(x) * 100 * math.pow(10, -9)
+
         for entry in response:
             if entry.get('dn'):
                 attributes = entry.get('attributes')
                 yield OrderedDict([
                     ('DN', entry.get('dn')),
 
-                    ('lockoutThreshold', attributes.get('lockoutThreshold')),
-                    ('maxPwdAge', attributes.get('maxPwdAge')),
-                    ('lockOutObservationWindow', attributes.get('lockOutObservationWindow')),
-                    ('lockoutDuration', attributes.get('lockoutDuration')),
-                    ('lockoutThreshold', attributes.get('lockoutThreshold')),
+                    ('lockoutThreshold (h)', get_time_in_sec(attributes.get('lockoutThreshold')) / 3600),
+
+                    ('maxPwdAge (d)', get_time_in_sec(attributes.get('maxPwdAge')) / 3600 / 24),
+                    ('lockOutObservationWindow (h)', get_time_in_sec(attributes.get('lockOutObservationWindow')) / 3600),
+                    ('lockoutDuration (h)', get_time_in_sec(attributes.get('lockoutDuration')) / 3600),
+                    ('lockoutThreshold (Faild Auth #)', get_time_in_sec(attributes.get('lockoutThreshold'))),
 
                     ('minPwdLength', attributes.get('minPwdLength')),
-                    ('minPwdAge', attributes.get('minPwdAge')),
-                    ('maxPwdAge', attributes.get('maxPwdAge')),
+                    ('minPwdAge (d)', get_time_in_sec(attributes.get('minPwdAge') / 3600 / 24 )),
+                    ('maxPwdAge (d)', get_time_in_sec(attributes.get('maxPwdAge') / 3600 / 24)),
                     ('msDS-Behavior-Version (DFS)', attributes.get('msDS-Behavior-Version'))
                 ])
 
@@ -145,6 +195,8 @@ test_args = [
 def print_dict(d):
     # Compute longest key for pretty print
     for k,v in d.items():
+        if v is None or not len(str(v)):
+            v = "-"
         print('{: <20} {}'.format(k + ':', str(v)))
 
 
@@ -200,22 +252,26 @@ if __name__ == "__main__":
     dict_list_to_csv(policies, 'policy.csv')
 
     print('Getting computers...be patient...')
-    computers = [computer for computer in recon.get_computers()]
-    dict_list_to_csv(computers, 'computers.csv')
-
-    for x in computers:
-        print_dict(x)
+    computers = []
+    for computer in recon.get_computers():
+        computers += [computer]
+        print_dict(computer)
         print()
+
+    print('Saving computers to csv...')
+    dict_list_to_csv(computers, 'computers.csv')
 
     print()
 
     print('Getting users...be patient...')
-    users = [user for user in recon.get_users()]
-
-    for x in users:
-        print_dict(x)
+    users = []
+    for user in recon.get_users():
+        users += [user]
+        print_dict(user)
         print()
 
+
+    print('Saving users to csv...')
     dict_list_to_csv(users, 'user.csv')
 
     print('Generating user-by-group list...be patient...')
