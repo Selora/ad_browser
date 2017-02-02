@@ -303,15 +303,17 @@ if __name__ == "__main__":
     dict_list_to_csv(users, 'group.csv')
 
     print('Generating user-by-group list...be patient...')
-    groups = {}
+    user_groups = {}
     for user in users:
         for group in user['member_of'].split(','):
-            groups.setdefault(group.strip(), set()).update([user['SAMaccountName']])
+            user_groups.setdefault(group.strip(), set()).update([user['SAMaccountName']])
 
-    for k,v in groups.items():
-        groups[k] = ','.join([x for x in v if x])
+    for k,v in user_groups.items():
+        user_groups[k] = ','.join([x for x in v if x])
 
-    print_dict(groups)
+    print_dict(user_groups)
     print()
 
-    dict_list_to_csv([groups], 'groups_user.csv')
+    # Gotta 'rotate' the dict to print it properly
+    user_groups = [{'Group':k, 'Users':v} for k,v in user_groups.items()]
+    dict_list_to_csv(user_groups, 'groups_user.csv')
