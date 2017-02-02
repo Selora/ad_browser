@@ -137,11 +137,39 @@ class ADRecon:
                     ('msDS-Behavior-Version (DFS)', attributes.get('msDS-Behavior-Version'))
                 ])
 
+    def get_groups(self):
+        search_filter = '(objectClass=Group)'
+        response = self.ad.query(search_filter)
+
+        print('Here!')
+
+        for entry in response:
+            if entry.get('dn'):
+                attributes = entry.get('attributes')
+                #[print(k,v) for k,v in attributes.items()]
+                #exit(-1)
+                yield OrderedDict([
+                    ('DN', entry.get('dn')),
+
+                    ('Group Details', ' '),
+                    ('name', attributes.get('name')),
+                    ('whenCreated', attributes.get('whenCreated')),
+                    ('SAMaccountName', attributes.get('sAMAccountName')),
+                    ('cn', attributes.get('cn')),
+                    ('SID', attributes.get('objectSid')),
+
+                    ('Groups & SPN', ' '),
+                    ('member_of', ', '.join(strip_member_of(attributes.get('memberOf')) or []))
+                ])
+        pass
+
+
 def strip_member_of(member_of):
     if member_of:
         raw = [x.split(',') for x in member_of]
-        groups = [x for group in raw for x in group
-                  if 'Users' not in x and 'DC' not in x and 'Builtin' not in x]
+        groups = [x for dn in raw
+                  for x in dn
+                  if 'CN=Users' not in x and 'DC=' not in x and 'CN=Builtin' not in x]
         return [x.split('=')[1] for x in groups if
                          len(x.split('=')) >1]
     else:
@@ -262,9 +290,17 @@ if __name__ == "__main__":
         print_dict(user)
         print()
 
-
     print('Saving users to csv...')
     dict_list_to_csv(users, 'user.csv')
+
+    print('Getting groups...be patient...')
+    groups = []
+    for group in recon.get_groups():
+        print_dict(group)
+        print()
+
+    print('Saving groups to csv...')
+    dict_list_to_csv(users, 'group.csv')
 
     print('Generating user-by-group list...be patient...')
     groups = {}
@@ -278,4 +314,4 @@ if __name__ == "__main__":
     print_dict(groups)
     print()
 
-    dict_list_to_csv([groups], 'groups.csv')
+    dict_list_to_csv([groups], 'groups_user.csv')

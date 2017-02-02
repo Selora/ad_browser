@@ -115,4 +115,4 @@ if __name__ == "__main__":
                         password=args.password,
                         ntlm=args.ntlm_hash)
 
-    print([x for x in adclient.query(args.query)])
+    [print(x) for x in adclient.query(args.query)]
