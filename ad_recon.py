@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from ad_client import ADClient
+from ad_analysis import GroupTransitivityAnalysis
 
 from collections import OrderedDict
 import argparse
@@ -62,6 +63,9 @@ class ADRecon:
             if entry.get('dn'):
                 attributes = entry.get('attributes')
                 #[print(k,v) for k,v in attributes.items()]
+                #print()
+                #print()
+                #exit()
                 yield OrderedDict([
                     ('DN', entry.get('dn')),
                     ('name', attributes.get('name')),
@@ -69,7 +73,8 @@ class ADRecon:
                     ('OS_name', attributes.get('operatingSystem')),
                     ('OS_servicepack', attributes.get('operatingSystemServicePack') or ''),
                     ('fqdn', attributes.get('dNSHostName')),
-                    ('spn', ', '.join(attributes.get('servicePrincipalName'))),
+                    ('spn', ', '.join(attributes.get('servicePrincipalName') or [])),
+                    ('member_of', ', '.join(strip_member_of(attributes.get('memberOf')) or [])),
                     ('Kerberos', recon._get_kerberos_supported_types(attributes.get('msDS-SupportedEncryptionTypes')))
                 ])
 
@@ -81,11 +86,13 @@ class ADRecon:
             if entry.get('dn'):
                 attributes = entry.get('attributes')
                 #[print(k,v) for k,v in attributes.items()]
+                #print()
+                #print()
                 #exit(-1)
                 yield OrderedDict([
                     ('DN', entry.get('dn')),
 
-                    ('Account Details', ' '),
+                    ('Account Details', '*'*10),
                     ('name', attributes.get('name')),
                     ('whenCreated', attributes.get('whenCreated')),
                     ('SAMaccountName', attributes.get('sAMAccountName')),
@@ -93,20 +100,21 @@ class ADRecon:
                     ('upn', attributes.get('userPrincipalName')),
                     ('SID', attributes.get('objectSid')),
 
-                    ('Pwd & failed auth', ' '),
+                    ('Pwd & failed auth', '*'*10),
                     ('pwdLastSet', attributes.get('pwdLastSet')),
                     ('badPwdCount', attributes.get('badPwdCount')),
                     ('badPwdTime', attributes.get('badPasswordTime')),
 
-                    ('Login', ' '),
+                    ('Login', '*'*10),
                     ('lastLogoff', attributes.get('lastLogoff')),
                     ('lastLogon', attributes.get('lastLogon')),
                     ('logonCount', attributes.get('logonCount')),
 
-                    ('UAC', ' '),
-                    ('UAC', str(UAC(attributes.get('userAccountControl'))).replace('UAC.', '')),
+                    ('UAC', '*'*10),
+                    ('UAC', (str(UAC(attributes.get('userAccountControl')
+                                     or 0x0)).replace('UAC.', ''))),
 
-                    ('Groups & SPN', ' '),
+                    ('Groups & SPN', '*'*10),
                     ('member_of', ', '.join(strip_member_of(attributes.get('memberOf')) or [])),
                     ('spn', ', '.join(attributes.get('servicePrincipalName') or []))
                 ])
@@ -121,6 +129,10 @@ class ADRecon:
         for entry in response:
             if entry.get('dn'):
                 attributes = entry.get('attributes')
+                #[print(k,v) for k,v in attributes.items()]
+                #print()
+                #print()
+                #exit(-1)
                 yield OrderedDict([
                     ('DN', entry.get('dn')),
 
@@ -129,7 +141,7 @@ class ADRecon:
                     ('maxPwdAge (d)', get_time_in_sec(attributes.get('maxPwdAge')) / 3600 / 24),
                     ('lockOutObservationWindow (h)', get_time_in_sec(attributes.get('lockOutObservationWindow')) / 3600),
                     ('lockoutDuration (h)', get_time_in_sec(attributes.get('lockoutDuration')) / 3600),
-                    ('lockoutThreshold (Faild Auth #)', get_time_in_sec(attributes.get('lockoutThreshold'))),
+                    ('lockoutThreshold (Faild Auth #)', attributes.get('lockoutThreshold')),
 
                     ('minPwdLength', attributes.get('minPwdLength')),
                     ('minPwdAge (d)', get_time_in_sec(attributes.get('minPwdAge') / 3600 / 24 )),
@@ -147,6 +159,8 @@ class ADRecon:
             if entry.get('dn'):
                 attributes = entry.get('attributes')
                 #[print(k,v) for k,v in attributes.items()]
+                #print()
+                #print()
                 #exit(-1)
                 yield OrderedDict([
                     ('DN', entry.get('dn')),
@@ -157,8 +171,9 @@ class ADRecon:
                     ('SAMaccountName', attributes.get('sAMAccountName')),
                     ('cn', attributes.get('cn')),
                     ('SID', attributes.get('objectSid')),
+                    ('adminCount', attributes.get('adminCount') or '-'),
 
-                    ('Groups & SPN', ' '),
+                    ('Groups & SPN', '*'*10),
                     ('member_of', ', '.join(strip_member_of(attributes.get('memberOf')) or []))
                 ])
         pass
@@ -263,12 +278,14 @@ if __name__ == "__main__":
     recon = ADRecon(adclient)
 
     print('Getting policy...')
+
     policies = [policy for policy in recon.get_policies()]
 
     for policy in policies:
         print_dict(policy)
     print()
 
+    policies = [{'Policy':k, 'Value':v} for k,v in policies[0].items()]
     dict_list_to_csv(policies, 'policy.csv')
 
     print('Getting computers...be patient...')
@@ -296,11 +313,12 @@ if __name__ == "__main__":
     print('Getting groups...be patient...')
     groups = []
     for group in recon.get_groups():
+        groups += [group]
         print_dict(group)
         print()
 
     print('Saving groups to csv...')
-    dict_list_to_csv(users, 'group.csv')
+    dict_list_to_csv(groups, 'group.csv')
 
     print('Generating user-by-group list...be patient...')
     user_groups = {}
@@ -317,3 +335,14 @@ if __name__ == "__main__":
     # Gotta 'rotate' the dict to print it properly
     user_groups = [{'Group':k, 'Users':v} for k,v in user_groups.items()]
     dict_list_to_csv(user_groups, 'groups_user.csv')
+
+    print("Getting all users in administrative groups")
+    group_transitivity_analysis = GroupTransitivityAnalysis()
+
+    da_list = []
+    for da in group_transitivity_analysis.get_all_transitive_admins(users=users, groups=groups):
+        da_list += [da]
+        print_dict(da)
+        print()
+
+    dict_list_to_csv(da_list, 'transitive_domain_admins.csv')
