@@ -2,6 +2,7 @@
 
 import argparse
 import sys
+import getpass
 
 import ldap3
 from ldap3 import Connection, Server, ALL, NTLM, ALL_ATTRIBUTES
@@ -23,7 +24,8 @@ class ADClient:
             elif ntlm:
                 self._ldap_client = Connection(self.server, user=windows_domain + '\\' + username, password=ntlm, authentication=NTLM, auto_bind=True)
             else:
-                raise RuntimeError('Needs either PW or LM:NTLM hashes!')
+                password = getpass.getpass(prompt="Password for {}\\{}: ".format(windows_domain, username))
+                self._ldap_client = Connection(self.server, user=windows_domain + '\\' + username, password=password, auto_bind=True)
         except ldap3.core.exceptions.LDAPBindError as e:
             print(e)
             exit(-1)

@@ -94,6 +94,7 @@ class ADRecon:
 
                     ('Account Details', '*'*10),
                     ('name', attributes.get('name')),
+                    ('displayName', attributes.get('displayName')),
                     ('whenCreated', attributes.get('whenCreated')),
                     ('SAMaccountName', attributes.get('sAMAccountName')),
                     ('cn', attributes.get('cn')),
