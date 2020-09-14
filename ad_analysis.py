@@ -39,7 +39,7 @@ class GroupTransitivityAnalysis(BaseAnalysis):
         """
         for user in users:
             found_groups = [x for x in groups if x.get('SAMaccountName') in user.get('member_of').split(', ')]
-            admin_groups = [x for x in found_groups if x.get('adminCount') is not '-']
+            admin_groups = [x for x in found_groups if x.get('adminCount') != '-']
             if admin_groups:
                 yield OrderedDict([
                     ('User', user.get('SAMaccountName')),
