@@ -11,12 +11,17 @@ from ldap3 import Connection, Server, ALL, NTLM, ALL_ATTRIBUTES
 class ADClient:
     """Wrapper around raw ldap mechanisms"""
 
-    def __init__(self, ldap_server, windows_domain, username, password=None, ntlm=None):
+    def __init__(self, ldap_server, windows_domain, username, password=None, ntlm=None, use_ssl=True):
         """Connect to the LDAP server credentials for username and password.
         Returns None on success or a string describing the error on failure
         # Adapt to your needs
         """
-        self.server = Server(ldap_server, get_info=ALL)
+        self.use_ssl = use_ssl
+
+        if self.use_ssl:
+            self.server = Server(ldap_server, get_info=ALL, port=636, use_ssl=True)
+        else:
+            self.server = Server(ldap_server, get_info=ALL)
 
         try:
             if password:
