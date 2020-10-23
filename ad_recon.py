@@ -242,6 +242,10 @@ def parse_args(args):
                             default='ldap_recon',
                             help='Directory to output csv data')
 
+    arg_parser.add_argument('--use_insecure', '-i',
+                            action='store_true',
+                            help='Use LDAP instead of LDAPS. Does not validate Certs with LDAPS...')
+
     return arg_parser.parse_args(args)
 
 test_args = [
@@ -282,7 +286,8 @@ if __name__ == "__main__":
                         windows_domain=args.windows_domain,
                         username=args.username,
                         password=args.password,
-                        ntlm=args.ntlm_hash)
+                        ntlm=args.ntlm_hash,
+                        use_ssl=(not args.use_insecure))
 
     makedirs(args.out_dir, exist_ok=True)
     with open(path.join(args.out_dir, 'smartcard'),'w') as f:
